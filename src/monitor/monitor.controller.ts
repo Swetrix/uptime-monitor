@@ -2,42 +2,96 @@ import { Controller, Logger } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { MonitorHttpRequest } from './interfaces/http-payload.interface';
 import { HttpService } from '@nestjs/axios';
-import { lastValueFrom } from 'rxjs';
-import { AxiosRequestHeaders } from 'axios';
+import axios, { AxiosRequestHeaders, AxiosResponse } from 'axios';
 
 @Controller('monitor')
 export class MonitorController {
   private readonly logger = new Logger(MonitorController.name);
+
   constructor(private readonly httpService: HttpService) {}
 
   @MessagePattern('http-request')
-  async makeHttpRequest(@Payload() monitorRequest: MonitorHttpRequest): Promise<{}> {
-    this.logger.debug(`Consumer works ${JSON.stringify(monitorRequest)}}`);
-
-    // rxjs for rertries, similar as like with integrations
-    const method = monitorRequest.httpOptions.method[0]
-    
-    const response = await lastValueFrom(
-      this.httpService.request({
-        method: method,
-        url: monitorRequest.url,
-        data: monitorRequest.httpOptions.body,
-        headers: monitorRequest.httpOptions.headers,
-        timeout: monitorRequest.timeout,
-      })
+  async makeHttpRequest(
+    @Payload() monitorRequest: MonitorHttpRequest,
+  ): Promise<any> {
+    this.logger.debug(
+      `Received HTTP request: ${JSON.stringify(monitorRequest)}`,
     );
-    this.logger.debug(`HTTP request successful: ${JSON.stringify(response.data)}`);
 
-    const responseClear = {
-      response: response.data,
-      headers: response.headers,
-      status: response.status
-    } 
-    return responseClear
-    
-      // method:
+    const method = monitorRequest.httpOptions.method[0];
+    const url = monitorRequest.url;
+    const data = monitorRequest.httpOptions.body;
+    const headers: AxiosRequestHeaders = monitorRequest.httpOptions.headers;
+    const timeout = monitorRequest.timeout;
 
-    // );    // HOW to send dynamically request --> handlers
-    // return monitorRequest; /// TODO implement functionality in service, to send http requests --->
+    const config = {
+      method: method,
+      url: url,
+      data: data,
+      headers: headers,
+      timeout: timeout,
+    };
+
+    let attempts = 0;
+    let response: AxiosResponse;
+
+    // Implement retry logic
+    while (attempts <= monitorRequest.retries) {
+      attempts++;
+      const startTime = Date.now();
+
+      try {
+        response = await axios(config);
+
+        const endTime = Date.now();
+        this.logger.debug(
+          `HTTP request successful on attempt ${attempts}: ${JSON.stringify(response.data)}`,
+        );
+
+        // TODO return region of the server TODO ANDREW consultation (ASIA/EUROPE/US)
+        const responseClear = {
+          responseTime: endTime - startTime,
+          statusCode: response.status,
+          timestamp: startTime * 1000,
+          region: 'auto',
+        };
+
+        return responseClear;
+      } catch (error) {
+        this.logger.error(
+          `HTTP request failed on attempt ${attempts}: ${error.message}`,
+        );
+
+        // Check if the error is a network error (like getaddrinfo ENOTFOUND)
+        let statusCode = 500; // Default to a server error code
+        if (error.response) {
+          statusCode = error.response.status;
+        } else if (
+          error.code === 'ENOTFOUND' ||
+          error.code === 'ECONNREFUSED'
+        ) {
+          statusCode = 503; // Service Unavailable
+        } else if (error.code === 'ETIMEDOUT') {
+          statusCode = 504; // Gateway Timeout
+        } else if (error.code === 'ECONNABORTED') {
+          statusCode = 408; // Request Timeout
+        }
+
+        // If the number of attempts exceeds the retry limit, return the error
+        if (attempts > monitorRequest.retries) {
+          return {
+            statusCode,
+            message: error.message,
+            timestamp: startTime * 1000,
+            region: 'auto',
+          };
+        }
+
+        // Wait before retrying
+        await new Promise((resolve) =>
+          setTimeout(resolve, monitorRequest.retryInterval),
+        );
+      }
+    }
   }
 }

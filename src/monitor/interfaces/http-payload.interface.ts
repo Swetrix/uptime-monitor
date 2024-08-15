@@ -1,3 +1,5 @@
+import { AxiosRequestHeaders } from 'axios';
+
 enum HttpMethodEnum {
   GET = 'GET',
   POST = 'POST',
@@ -30,11 +32,10 @@ enum HttpStatusCodeEnum {
 interface HttpOptions {
   method: HttpMethodEnum;
   body?: Record<string, unknown>;
-  headers?: Record<string, string>;
+  headers?: AxiosRequestHeaders;
 }
 
 export interface MonitorHttpRequest {
-  monitorType: 'HTTP' | 'HTTPS';
   name: string;
   url: string;
   interval: number;
