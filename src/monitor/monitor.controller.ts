@@ -1,14 +1,14 @@
 import { Controller, Logger } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { MonitorHttpRequest } from './interfaces/http-payload.interface';
-import { HttpService } from '@nestjs/axios';
 import axios, { AxiosRequestHeaders, AxiosResponse } from 'axios';
+import { ConfigService } from '@nestjs/config';
 
 @Controller('monitor')
 export class MonitorController {
   private readonly logger = new Logger(MonitorController.name);
 
-  constructor(private readonly httpService: HttpService) {}
+  constructor(private configService: ConfigService) {}
 
   @MessagePattern('http-request')
   async makeHttpRequest(
@@ -48,12 +48,11 @@ export class MonitorController {
           `HTTP request successful on attempt ${attempts}: ${JSON.stringify(response.data)}`,
         );
 
-        // TODO return region of the server TODO ANDREW consultation (ASIA/EUROPE/US)
         const responseClear = {
           responseTime: endTime - startTime,
           statusCode: response.status,
           timestamp: startTime * 1000,
-          region: 'auto',
+          region: this.configService.get('REGION'),
         };
 
         return responseClear;
@@ -83,7 +82,7 @@ export class MonitorController {
             statusCode,
             message: error.message,
             timestamp: startTime * 1000,
-            region: 'auto',
+            region: this.configService.get('REGION'),
           };
         }
 
