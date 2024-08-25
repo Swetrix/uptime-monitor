@@ -14,10 +14,6 @@ export class MonitorController {
   async makeHttpRequest(
     @Payload() monitorRequest: MonitorHttpRequest,
   ): Promise<any> {
-    this.logger.debug(
-      `Received HTTP request: ${JSON.stringify(monitorRequest)}`,
-    );
-
     const method = monitorRequest.httpOptions.method[0];
     const url = monitorRequest.url;
     const data = monitorRequest.httpOptions.body;
@@ -44,9 +40,6 @@ export class MonitorController {
         response = await axios(config);
 
         const endTime = Date.now();
-        this.logger.debug(
-          `HTTP request successful on attempt ${attempts}: ${JSON.stringify(response.data)}`,
-        );
 
         const responseClear = {
           responseTime: endTime - startTime,
